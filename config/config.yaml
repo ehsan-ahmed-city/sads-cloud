@@ -1,0 +1,6 @@
+aws:
+  region: eu-west-2
+
+cognito:
+  user_pool_id: "eu-west-2_rWmk3mqog"
+  client_id: "v94619ecvlpfomqu9tc5t8ojb"
