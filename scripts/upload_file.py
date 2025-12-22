@@ -1,12 +1,15 @@
 import math
 from pathlib import Path
 import yaml
+import json
 
 from auth.token_verify import verify_access_token
 from storage.s3_client import upload_bytes
-from encryption.salsa20_encrypt import salsa20_encrypt  # import once
+from encryption.salsa20_encrypt import salsa20_encrypt
+from datetime import datetime, timezone
 
-CHUNK_SIZE = 1024 * 1024  # 1MB blocks
+
+CHUNK_SIZE = 1024 * 1024 # 1MB blocks
 
 def load_config():
     with Path("config/config.yaml").open("r", encoding="utf-8") as f:
@@ -55,7 +58,23 @@ def main():
 
         enc_s3_key = f"encrypted/{user_id}/{p.name}/block_{i:05d}"
         upload_bytes(raw_bucket, enc_s3_key, payload, region)
-        print("Uploaded", enc_s3_key, f"({len(payload)} bytes)")
+        print("Uploaded", enc_s3_key, f"({len(payload)} bytes)")#meta data upload terminl
+        meta = {
+            "block_id": f"block_{i:05d}",
+            "owner": user_id,
+            "filename": p.name,
+            "chunk_index": i,
+            "chunk_size": len(payload),
+            "created_ts_utc": datetime.now(timezone.utc).isoformat(),
+            "encrypted": True,
+            "compression": "none",
+            "cluster_id": None
+        }
+
+        meta_key = enc_s3_key + ".meta.json"
+        upload_bytes(raw_bucket, meta_key, json.dumps(meta).encode("utf-8"), region, content_type="application/json")
+        print("Uploaded", meta_key)
+
 
     print("Done.")
 
