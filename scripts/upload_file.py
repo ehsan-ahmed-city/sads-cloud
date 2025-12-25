@@ -3,7 +3,8 @@ from pathlib import Path
 import yaml
 import json
 
-from auth.token_verify import verify_access_token
+from auth.authenticate import authenticate_user
+from metadata.validate import validate_block_meta
 from storage.s3_client import upload_bytes
 from encryption.salsa20_encrypt import salsa20_encrypt
 from datetime import datetime, timezone
@@ -23,10 +24,14 @@ def main():
     raw_bucket = cfg["s3"]["raw_bucket"]
     print("Bucket:", raw_bucket, "| Region:", region)
 
-    access_token = input("Paste Cognito ACCESS token: ").strip().split()[0]
-    user = verify_access_token(access_token)
-    user_id = user["Username"]
-    print("Token OK for user:", user_id)
+    email = input("Email: ").strip()
+    password = input("Password: ").strip() #for now
+    auth = authenticate_user(email, password)
+
+    user_id = auth.user_id
+    access_token = auth.access_token  #for loging / prove auth
+    print("Auth OK for user:", user_id, "| login:", auth.login_ts_utc)
+
 
     file_path = input("Path to file: ").strip()
     p = Path(file_path)
@@ -68,8 +73,11 @@ def main():
             "created_ts_utc": datetime.now(timezone.utc).isoformat(),
             "encrypted": True,
             "compression": "none",
-            "cluster_id": None
+            "cluster_id": None,
+            "s3_key": enc_s3_key
         }
+        validate_block_meta(meta)
+
 
         meta_key = enc_s3_key + ".meta.json"
         upload_bytes(raw_bucket, meta_key, json.dumps(meta).encode("utf-8"), region, content_type="application/json")
