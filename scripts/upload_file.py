@@ -8,6 +8,10 @@ from metadata.validate import validate_block_meta
 from storage.s3_client import upload_bytes
 from encryption.salsa20_encrypt import salsa20_encrypt
 from datetime import datetime, timezone
+from getpass import getpass
+from auth.token_verify import verify_access_token
+from trust_centre.accessLogs import append_access_log
+
 
 
 CHUNK_SIZE = 1024 * 1024 # 1MB blocks
@@ -24,13 +28,19 @@ def main():
     raw_bucket = cfg["s3"]["raw_bucket"]
     print("Bucket:", raw_bucket, "| Region:", region)
 
-    email = input("Email: ").strip()
-    password = input("Password: ").strip() #for now
-    auth = authenticate_user(email, password)
+    mode = input("Auth mode (token/password): ").strip().lower()
 
-    user_id = auth.user_id
-    access_token = auth.access_token  #for loging / prove auth
-    print("Auth OK for user:", user_id, "| login:", auth.login_ts_utc)
+    if mode == "token":
+        access_token = input("Paste Cognito ACCESS token: ").strip().split()[0]
+        user = verify_access_token(access_token)  #raise if invalid
+        user_id = user["Username"]
+        print("Token OK for user:", user_id)
+    else:
+        email = input("Email: ").strip()
+        password = getpass("Password (hidden): ")
+        auth = authenticate_user(email, password)  #login + trustcentre log
+        user_id = auth.user_id
+        print("Auth OK for user:", user_id, "| login:", auth.login_ts_utc)
 
 
     file_path = input("Path to file: ").strip()
@@ -59,11 +69,36 @@ def main():
         chunk = data[start:end]
 
         nonce, encrypted = salsa20_encrypt(salsa_key, chunk)
-        payload = nonce + encrypted  # nonce (8 bytes) + ciphertext
+        payload = nonce + encrypted  #nonce(8 bytes)+ ciphertext
 
         enc_s3_key = f"encrypted/{user_id}/{p.name}/block_{i:05d}"
-        upload_bytes(raw_bucket, enc_s3_key, payload, region)
-        print("Uploaded", enc_s3_key, f"({len(payload)} bytes)")#meta data upload terminl
+
+        try:
+            upload_bytes(raw_bucket, enc_s3_key, payload, region)
+            print("Uploaded", enc_s3_key, f"({len(payload)} bytes)")#meta data upload terminl
+
+            append_access_log(
+                bucket=raw_bucket,
+                region=region,
+                user_id=user_id,
+                action="upload",
+                s3_key=enc_s3_key,
+                ok=True,
+                extra={"bytes": len(payload), "filename": p.name, "chunk_index": i},
+            )
+
+        except Exception as e:
+            append_access_log(
+                bucket=raw_bucket,
+                region=region,
+                user_id=user_id,
+                action="upload",
+                s3_key=enc_s3_key,
+                ok=False,
+                reason=str(e),
+                extra={"filename": p.name, "chunk_index": i},
+            )
+            raise
         meta = {
             "block_id": f"block_{i:05d}",
             "owner": user_id,
@@ -80,8 +115,31 @@ def main():
 
 
         meta_key = enc_s3_key + ".meta.json"
-        upload_bytes(raw_bucket, meta_key, json.dumps(meta).encode("utf-8"), region, content_type="application/json")
-        print("Uploaded", meta_key)
+        try:
+            upload_bytes(raw_bucket, meta_key, json.dumps(meta).encode("utf-8"), region, content_type="application/json")
+            print("Uploaded", meta_key)
+
+            append_access_log(
+                bucket=raw_bucket,
+                region=region,
+                user_id=user_id,
+                action="upload_meta",
+                s3_key=meta_key,
+                ok=True,
+                extra={"filename": p.name, "chunk_index": i},
+            )
+        except Exception as e:
+            append_access_log(
+                bucket=raw_bucket,
+                region=region,
+                user_id=user_id,
+                action="upload_meta",
+                s3_key=meta_key,
+                ok=False,
+                reason=str(e),
+                extra={"filename": p.name, "chunk_index": i},
+            )
+            raise
 
 
     print("Done.")
