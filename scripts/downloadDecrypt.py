@@ -3,7 +3,7 @@ import yaml
 import boto3
 from Crypto.Cipher import Salsa20
 from trust_centre.accessLogs import append_access_log
-from compression.lzma_codec import decompress_bytes
+from compression.lzmaCodec import decompress_bytes
 
 def load_config():
     return yaml.safe_load(Path("config/config.yaml").read_text(encoding="utf-8"))
