@@ -1,4 +1,4 @@
-from future import annotations
+from __future__ import annotations
 from typing import Dict, Any
 from metadata.schema import REQUIRED_FIELDS
 
