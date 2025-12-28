@@ -12,6 +12,7 @@ def append_access_log(
     region: str,
     user_id: str,
     action: str,  # upload, download,decrypt,cluster etc
+    s3_key: str,
     ok: bool,
     reason: str | None = None,
     extra: dict | None = None,
