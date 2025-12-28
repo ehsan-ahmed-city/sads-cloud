@@ -8,6 +8,9 @@ from metadata.validate import validate_block_meta
 from storage.s3_client import upload_bytes
 from encryption.salsa20_encrypt import salsa20_encrypt
 from datetime import datetime, timezone
+from getpass import getpass
+from auth.token_verify import verify_access_token
+
 
 
 CHUNK_SIZE = 1024 * 1024 # 1MB blocks
@@ -24,13 +27,19 @@ def main():
     raw_bucket = cfg["s3"]["raw_bucket"]
     print("Bucket:", raw_bucket, "| Region:", region)
 
-    email = input("Email: ").strip()
-    password = input("Password: ").strip() #for now
-    auth = authenticate_user(email, password)
+    mode = input("Auth mode (token/password): ").strip().lower()
 
-    user_id = auth.user_id
-    access_token = auth.access_token  #for loging / prove auth
-    print("Auth OK for user:", user_id, "| login:", auth.login_ts_utc)
+    if mode == "token":
+        access_token = input("Paste Cognito ACCESS token: ").strip().split()[0]
+        user = verify_access_token(access_token)  #raise if invalid
+        user_id = user["Username"]
+        print("Token OK for user:", user_id)
+    else:
+        email = input("Email: ").strip()
+        password = getpass("Password (hidden): ")
+        auth = authenticate_user(email, password)  #login + trustcentre log
+        user_id = auth.user_id
+        print("Auth OK for user:", user_id, "| login:", auth.login_ts_utc)
 
 
     file_path = input("Path to file: ").strip()
@@ -59,7 +68,7 @@ def main():
         chunk = data[start:end]
 
         nonce, encrypted = salsa20_encrypt(salsa_key, chunk)
-        payload = nonce + encrypted  # nonce (8 bytes) + ciphertext
+        payload = nonce + encrypted  #nonce(8 bytes)+ ciphertext
 
         enc_s3_key = f"encrypted/{user_id}/{p.name}/block_{i:05d}"
         upload_bytes(raw_bucket, enc_s3_key, payload, region)

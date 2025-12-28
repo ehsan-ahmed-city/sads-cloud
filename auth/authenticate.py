@@ -1,11 +1,11 @@
-from future import annotations
+from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 
 from auth.cognito import sign_in
 from auth.token_verify import verify_access_token
-from trust_centre.loginlogs import append_login_log
+from trust_centre.loginLogs import append_login_log
 
 @dataclass
 class AuthResult:
