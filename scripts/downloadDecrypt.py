@@ -3,6 +3,7 @@ import yaml
 import boto3
 from Crypto.Cipher import Salsa20
 from trust_centre.accessLogs import append_access_log
+from compression.lzma_codec import decompress_bytes
 
 def load_config():
     return yaml.safe_load(Path("config/config.yaml").read_text(encoding="utf-8"))
@@ -52,9 +53,10 @@ def main():
     try:
         cipher = Salsa20.new(key=salsa_key, nonce=nonce)
         plaintext = cipher.decrypt(ciphertext)
+        decompressed = decompress_bytes(plaintext) #for decrompession
 
         out = Path("tmp_decrypted_" + filename)
-        out.write_bytes(plaintext)
+        out.write_bytes(decompressed)
         print("Wrote:", out)
 
         append_access_log(#separate decrypt log event

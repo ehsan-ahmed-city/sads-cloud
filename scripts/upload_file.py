@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from getpass import getpass
 from auth.token_verify import verify_access_token
 from trust_centre.accessLogs import append_access_log
-
+from compression.lzmaCodec import compress_bytes
 
 
 CHUNK_SIZE = 1024 * 1024 # 1MB blocks
@@ -68,8 +68,12 @@ def main():
         end = min(start + CHUNK_SIZE, total)
         chunk = data[start:end]
 
-        nonce, encrypted = salsa20_encrypt(salsa_key, chunk)
-        payload = nonce + encrypted  #nonce(8 bytes)+ ciphertext
+        #compress before encryption
+        compressed = compress_bytes(chunk)
+
+        nonce, encrypted = salsa20_encrypt(salsa_key, compressed)
+        payload = nonce + encrypted  #nonce(8 bytes)+ cyphertext
+
 
         enc_s3_key = f"encrypted/{user_id}/{p.name}/block_{i:05d}"
 
@@ -105,9 +109,11 @@ def main():
             "filename": p.name,
             "chunk_index": i,
             "chunk_size": len(payload),
+            "original_size": len(chunk),
+            "compressed_size": len(compressed),
             "created_ts_utc": datetime.now(timezone.utc).isoformat(),
             "encrypted": True,
-            "compression": "none",
+            "compression": "lzma",
             "cluster_id": None,
             "s3_key": enc_s3_key
         }
