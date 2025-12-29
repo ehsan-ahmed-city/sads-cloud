@@ -5,6 +5,11 @@ from Crypto.Cipher import Salsa20
 from trust_centre.accessLogs import append_access_log
 from compression.lzmaCodec import decompress_bytes
 
+from auth.token_verify import verify_access_token
+from auth.authenticate import authenticate_user
+from getpass import getpass
+
+
 def load_config():
     return yaml.safe_load(Path("config/config.yaml").read_text(encoding="utf-8"))
 
@@ -13,7 +18,23 @@ def main():
     region = cfg["aws"]["region"]
     bucket = cfg["s3"]["raw_bucket"]
 
-    user_id = input("Cognito user id: ").strip()
+    # user_id = input("Cognito user id: ").strip()
+    # filename = input("Filename (e.g. README.md): ").strip()
+
+    mode = input("Auth mode (token/password): ").strip().lower()
+
+    if mode == "token":
+        access_token = input("Paste Cognito ACCESS token: ").strip().split()[0]
+        user = verify_access_token(access_token) #raise if invald
+        user_id = user["Username"]
+        print("Token OK for user:", user_id)
+    else:
+        email = input("Email: ").strip()
+        password = getpass("Password (hidden): ")
+        auth = authenticate_user(email, password)
+        user_id = auth.user_id
+        print("Auth OK for user:", user_id, "| login:", auth.login_ts_utc)
+
     filename = input("Filename (e.g. README.md): ").strip()
 
     salsa_key = b"0123456789abcdef0123456789abcdef"  # same key as upload

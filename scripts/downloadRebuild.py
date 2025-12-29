@@ -17,16 +17,53 @@ def main():
     region = cfg["aws"]["region"]
     bucket = cfg["s3"]["raw_bucket"]
 
-    user_id = input("Cognito user id: ").strip()
-    filename = input("Filename (e.g. 4kphoto1.jpg): ").strip()
+    # user_id = input("Cognito user id: ").strip()
+    # filename = input("Filename (e.g. 4kphoto1.jpg): ").strip()
+    mode = input("Auth mode (token/password): ").strip().lower()
+
+    if mode == "token":
+        access_token = input("Paste Cognito ACCESS token: ").strip().split()[0]
+        user = verify_access_token(access_token)  # raises if invalid
+        user_id = user["Username"]
+        print("Token OK for user:", user_id)
+    else:
+        email = input("Email: ").strip()
+        password = getpass("Password (hidden): ")
+        auth = authenticate_user(email, password)
+        user_id = auth.user_id
+        print("Auth OK for user:", user_id, "| login:", auth.login_ts_utc)
+
+    filename = input("Filename (e.g. README.md): ").strip()
 
     salsa_key = b"0123456789abcdef0123456789abcdef"#same as upload
     s3 = boto3.client("s3", region_name=region)
 
-    #list all block objects for this file
+    #list all block objects for file
     prefix = f"encrypted/{user_id}/{filename}/block_"
-    resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
-    keys = sorted([o["Key"] for o in resp.get("Contents", []) if "/block_" in o["Key"] and not o["Key"].endswith(".meta.json")])#blocks back together
+    keys = []#empty lst for all s3 object keys across every page
+    token = None #first page
+    while True:#while loop until no mopr pages
+        kwargs = {"Bucket": bucket, "Prefix": prefix}#keyword args for list object with the bycket and prefix for keys
+        if token:
+            
+            kwargs["ContinuationToken"] = token#s3 gives token for next pagfe but don't need for first loop
+        
+        resp = s3.list_objects_v2(**kwargs)
+        #s3 objects lists objects
+
+        keys.extend(
+            o["Key"] for o in resp.get("Contents", [])
+            #takes they key after last /  for filename from path
+            if o["Key"].rsplit("/", 1)[-1].startswith("block_") and not o["Key"].endswith(".meta.json")
+            #"block" bit so block files are filtered and no meta json files and then appens to list
+        )
+        if resp.get("IsTruncated"):#if loop if more than 1000 keys for nesxt page
+            token = resp.get("NextContinuationToken")
+        else:
+            break
+
+    keys = sorted(keys)#keys sorted after loop
+
 
     if not keys:
         raise RuntimeError(f"No blocks found under {prefix}")

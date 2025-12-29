@@ -41,8 +41,8 @@ def main():
         meta = json.loads(raw.decode("utf-8"))
         metas.append(meta)
 
-    #build feature vectors
-    X = [[m["chunk_size"]] for m in metas]
+    X = [[m["compressed_size"]] for m in metas]#clusters with compresion and storage behaviour like paper
+
 
 
     model = DBSCAN(eps=200_000, min_samples=2)#DBSCAN eps is in "bytes" 
