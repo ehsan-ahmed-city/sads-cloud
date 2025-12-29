@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 import hashlib
 
 from auth.cognito import sign_in
+from auth.token_verify import verify_access_token
+from trust_centre.loginLogs import append_login_log
 
 @dataclass
 class AuthResult:
@@ -21,15 +23,22 @@ def authenticate_user(email: str, password: str) -> AuthResult:
     #need real pwd
     tokens = sign_in(email, password)
 
-    #parse from access token? better: call GetUser using access tokem
-    from auth.token_verify import verify_access_token
-    u = verify_access_token(tokens["access_token"])
+    u = verify_access_token(tokens["access_token"])#get user id from access token for verif
     user_id = u["Username"]
+    login_ts = datetime.now(timezone.utc).isoformat()
+    sha3_pw = sha3_256_hex(email + ":" + password) #better than hashing raw pwd
+    #TC log to S3
+    append_login_log(
+        bucket="sads-raw-data",
+        region="eu-west-2",
+        user_id=user_id,
+        sha3_pw=sha3_pw,
+    )
 
     return AuthResult(
         user_id=user_id,
         access_token=tokens["access_token"],
         id_token=tokens["id_token"],
-        sha3_pw=sha3_256_hex(password),
-        login_ts_utc=datetime.now(timezone.utc).isoformat()
+        sha3_pw=sha3_pw,
+        login_ts_utc=login_ts,
     )
