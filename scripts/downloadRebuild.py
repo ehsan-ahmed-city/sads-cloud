@@ -1,4 +1,4 @@
-import math
+
 from pathlib import Path
 import yaml
 import json
@@ -6,6 +6,11 @@ import boto3
 from Crypto.Cipher import Salsa20
 
 from compression.lzmaCodec import decompress_bytes  #only when meta says lzma
+from storage.s3_client import download_bytes #wiring zain's indexingt
+
+from auth.token_verify import verify_access_token
+from auth.authenticate import authenticate_user
+from getpass import getpass
 
 CHUNK_SIZE = 1024 * 1024 #must match upload
 
@@ -17,8 +22,6 @@ def main():
     region = cfg["aws"]["region"]
     bucket = cfg["s3"]["raw_bucket"]
 
-    # user_id = input("Cognito user id: ").strip()
-    # filename = input("Filename (e.g. 4kphoto1.jpg): ").strip()
     mode = input("Auth mode (token/password): ").strip().lower()
 
     if mode == "token":
@@ -38,41 +41,80 @@ def main():
     salsa_key = b"0123456789abcdef0123456789abcdef"#same as upload
     s3 = boto3.client("s3", region_name=region)
 
-    #list all block objects for file
-    prefix = f"encrypted/{user_id}/{filename}/block_"
-    keys = []#empty lst for all s3 object keys across every page
-    token = None #first page
-    while True:#while loop until no mopr pages
-        kwargs = {"Bucket": bucket, "Prefix": prefix}#keyword args for list object with the bycket and prefix for keys
-        if token:
+    #     #list all block objects for file
+    # prefix = f"encrypted/{user_id}/{filename}/block_"
+    # keys = []#empty lst for all s3 object keys across every page
+    # token = None #first page
+    # while True:#while loop until no mopr pages
+    #     kwargs = {"Bucket": bucket, "Prefix": prefix}#keyword args for list object with the bycket and prefix for keys
+    #     if token:
             
-            kwargs["ContinuationToken"] = token#s3 gives token for next pagfe but don't need for first loop
+    #         kwargs["ContinuationToken"] = token#s3 gives token for next pagfe but don't need for first loop
         
-        resp = s3.list_objects_v2(**kwargs)
-        #s3 objects lists objects
+    #     resp = s3.list_objects_v2(**kwargs)
+    #     #s3 objects lists objects
 
-        keys.extend(
-            o["Key"] for o in resp.get("Contents", [])
-            #takes they key after last /  for filename from path
-            if o["Key"].rsplit("/", 1)[-1].startswith("block_") and not o["Key"].endswith(".meta.json")
-            #"block" bit so block files are filtered and no meta json files and then appens to list
-        )
-        if resp.get("IsTruncated"):#if loop if more than 1000 keys for nesxt page
-            token = resp.get("NextContinuationToken")
+    #     keys.extend(
+    #         o["Key"] for o in resp.get("Contents", [])
+    #         #takes they key after last /  for filename from path
+    #         if o["Key"].rsplit("/", 1)[-1].startswith("block_") and not o["Key"].endswith(".meta.json")
+    #         #"block" bit so block files are filtered and no meta json files and then appens to list
+    #     )
+    #     if resp.get("IsTruncated"):#if loop if more than 1000 keys for nesxt page
+    #         token = resp.get("NextContinuationToken")
+    #     else:
+    #         break
+
+    # keys = sorted(keys)#keys sorted after loop
+
+    use_index = input("Use index? (y/n): ").strip().lower() == "y"
+
+    if use_index:
+        fit_key = f"index/{user_id}/fit.json"
+        fit_raw = download_bytes(bucket, fit_key, region)
+        fit = json.loads(fit_raw.decode("utf-8"))
+
+        cluster_id = input("Cluster id (blank=all): ").strip() or None
+        
+        keys = []
+        file_node = fit.get("files", {}).get(filename, {})
+        clusters = file_node.get("clusters", {})
+        if cluster_id:
+            keys = clusters.get(cluster_id, [])
         else:
-            break
+            for cid, ks in clusters.items():
+                keys.extend(ks)
 
-    keys = sorted(keys)#keys sorted after loop
+        keys = sorted(keys)
 
+    else:
+        prefix = f"encrypted/{user_id}/{filename}/block_"
+        keys = []
+        token = None
+        while True:
+            kwargs = {"Bucket": bucket, "Prefix": prefix}
+            if token:
+                kwargs["ContinuationToken"] = token
+            resp = s3.list_objects_v2(**kwargs)
+            keys.extend(
+                o["Key"] for o in resp.get("Contents", [])
+                if o["Key"].rsplit("/", 1)[-1].startswith("block_") and not o["Key"].endswith(".meta.json")
+            )
+            if resp.get("IsTruncated"):
+                token = resp.get("NextContinuationToken")
+            else:
+                break
+        keys = sorted(keys)
 
     if not keys:
+        if use_index:
+            raise RuntimeError("No blocks found in index for given filename/cluster_id")
         raise RuntimeError(f"No blocks found under {prefix}")
 
     out_path = Path("tmp_decrypted_" + filename)
-    out_path.write_bytes(b"")#ouput resets
+    out_path.write_bytes(b"")
 
     for key in keys:
-        #try read meta for block
         meta_key = key + ".meta.json"
         compression = "none"
         try:
