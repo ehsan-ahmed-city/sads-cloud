@@ -17,7 +17,7 @@ def load_config():
 
 
 def main():
-    cfg = load_config#loading config again
+    cfg = load_config()#loading config again
     region = cfg["aws"]["region"]
     bucket = cfg["s3"]["raw_bucket"]
 
