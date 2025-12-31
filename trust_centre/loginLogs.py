@@ -1,47 +1,43 @@
-
 from __future__ import annotations
 import json
 from datetime import datetime, timezone
 import boto3
 from botocore.exceptions import ClientError
+import uuid
 
 
-def append_login_log(
+def writeLoginEvent(
     *,
     bucket: str,
     region: str,
-    user_id: str,
-    sha3_pw: str,
-) -> None:
-    """
-    Append one login event to a JSONL file in S3 trust centre.
-    """
+    user_id: str | None,
+    success: bool,
+    reason: str | None = None,
+    extra: dict | None = None,
+) -> str:
+    #writing one login event as a single S3 obj
 
     s3 = boto3.client("s3", region_name=region)
-    key = "trust-centre/login_audit.jsonl"
+
+    now = datetime.now(timezone.utc)
+    key = f"trust-centre/logins/{now:%Y/%m/%d}/{uuid.uuid4().hex}.json"
 
     event = {
         "event": "login",
+        "ts_utc": now.isoformat(),
         "user_id": user_id,
-        "sha3_pw": sha3_pw,
-        "ts_utc": datetime.now(timezone.utc).isoformat(),
+        "success": success,
+        "reason": reason,
     }
 
-    line = (json.dumps(event) + "\n").encode("utf-8")
+    if extra:
+        event["extra"] = extra
 
-    #read existing log or strat empty
-    try:
-        resp = s3.get_object(Bucket=bucket, Key=key)
-        existing = resp["Body"].read()
-    except ClientError as e:
-        if e.response["Error"]["Code"] in ("NoSuchKey", "404"):
-            existing = b""
-        else:
-            raise
-
-    s3.put_object(#append + write back
+    s3.put_object(
         Bucket=bucket,
         Key=key,
-        Body=existing + line,
+        Body=json.dumps(event).encode("utf-8"),
         ContentType="application/json",
     )
+
+    return key
