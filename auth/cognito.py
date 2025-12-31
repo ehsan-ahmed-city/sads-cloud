@@ -17,8 +17,8 @@ def sign_up(email: str, password: str) -> None:
     region = cfg["aws"]["region"]
     client_id = cfg["cognito"]["client_id"]
 
-    # store SHA-3 hash as an extra “trust centre” artifact
-    hashed = sha3_256_hex(password)
+
+    hashed = sha3_256_hex(password)#store SHA3 hash as extra trust centre artifact
 
     c = cognito_client(region)
     c.sign_up(
@@ -45,5 +45,6 @@ def sign_in(email: str, password: str) -> Dict[str, str]:
     return {
         "access_token": res["AccessToken"],
         "id_token": res["IdToken"],
+        #access token and id from aws coginto
         "refresh_token": res.get("RefreshToken", ""),
     }

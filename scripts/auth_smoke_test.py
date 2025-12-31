@@ -1,14 +1,18 @@
+import os
 from auth.cognito import sign_up, sign_in
 
-email = "ehsan.test1@example.com"
-password = "Password123!"
+email = os.environ.get("SADS_TEST_EMAIL")
+password = os.environ.get("SADS_TEST_PASSWORD")
+
+if not email or not password:
+    raise RuntimeError("Set SADS_TEST_EMAIL and SADS_TEST_PASSWORD")
 
 print("Signing up...")
 try:
     sign_up(email, password)
-    print("Sign-up Ok.")
+    print("Sign-up OK.")
 except Exception as e:
-    print("Sign-up error (maybe already exists): ", e)
+    print("Sign-up error (maybe already exists):", e)
 
 print("Signing in...")
 tokens = sign_in(email, password)

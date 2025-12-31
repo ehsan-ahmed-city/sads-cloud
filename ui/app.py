@@ -24,6 +24,7 @@ from Crypto.Cipher import Salsa20
 from sklearn.cluster import DBSCAN
 
 from compression.lzmaCodec import compress_bytes, decompress_bytes
+from auth.authenticate import authenticate_user#added import since it wouldn't give option to sing in for access token
 
 
 from indexing.fractalIndex import buildFitClustSummary, FitIndex, lookup#indexing renamed file
@@ -194,7 +195,7 @@ def cluster_dbscan(*, bucket: str, region: str, user_id: str, filename: str | No
 
 
 def build_index(*, bucket: str, region: str, clusters_summary: dict):
-    fit = build_fit_from_cluster_summary(clusters_summary)
+    fit = buildFitClustSummary(clusters_summary)
     fit_key = f"index/{fit.user_id}/fit.json"
     upload_bytes(
         bucket=bucket,
@@ -263,16 +264,57 @@ tabs = st.tabs(["1) Auth", "2) Upload", "3) Cluster", "4) Build Index", "5) Look
 
 # 1) Auth
 with tabs[0]:
-    st.subheader("Auth (Cognito token verify)")
-    token = st.text_area("Paste Cognito ACCESS token", value=st.session_state["access_token"], height=120)
-    if st.button("Verify token"):
-        try:
-            user = verify_access_token(token.strip().split()[0])
-            st.session_state["access_token"] = token.strip()
-            st.session_state["user_id"] = user["Username"]
-            st.success(f"Token OK for user: {st.session_state['user_id']}")
-        except Exception as e:
-            st.error(str(e))
+    st.subheader("Auth (Cognito sign in or token verify)")
+
+    SIGNIN = "Sign in (email + password)"
+    PASTE = "Paste access token"
+    mode = st.radio("Auth mode", [SIGNIN, PASTE], horizontal=True)
+
+    if mode == SIGNIN:
+        email = st.text_input("Email", key="auth_email")
+        password = st.text_input("Password", type="password", key="auth_password")
+
+        if st.button("Sign in", key="btn_signin"):
+            try:
+                auth = authenticate_user(email, password)
+
+                # adapt to whatever your authenticate_user returns
+                token = getattr(auth, "access_token", None) or getattr(auth, "AccessToken", None)
+                if not token and isinstance(auth, dict):
+                    token = auth.get("access_token") or auth.get("AccessToken")
+
+                if not token:
+                    st.error("authenticate_user() didn't return an access token. Update auth.authenticate to include it.")
+                    st.stop()
+
+                user = verify_access_token(token)
+                st.session_state["access_token"] = token
+                st.session_state["user_id"] = user["Username"]
+
+                st.success(f"Signed in. User: {st.session_state['user_id']}")
+                st.code(st.session_state["access_token"])
+
+            except Exception as e:
+                st.error(str(e))
+
+    else:
+        token = st.text_area(
+            "enter your cognito access token",
+            value=st.session_state.get("access_token", ""),
+            height=120,
+            key="auth_token_text",
+        )
+
+        if st.button("Verify token", key="btn_verify"):
+            try:
+                tok = token.strip().split()[0]
+                user = verify_access_token(tok)
+                st.session_state["access_token"] = tok
+                st.session_state["user_id"] = user["Username"]
+                st.success(f"Token OK for user: {st.session_state['user_id']}")
+            except Exception as e:
+                st.error(str(e))
+
 
 # 2) Upload
 with tabs[1]:
@@ -371,6 +413,22 @@ with tabs[5]:
 
             rebuilt = rebuild_from_keys(bucket=bucket, region=region, keys=keys)
             rebuilt_hash = sha256_bytes(rebuilt)
+
+            append_access_log( # didn't have rebuild in aws access log in s3
+                bucket=bucket,
+                region=region,
+                user_id=user_id,
+                action="rebuild",
+                s3_key=f"encrypted/{user_id}/{filename}/",
+                ok=True,
+                extra={
+                    "blocks": len(keys),
+                    "sha256": rebuilt_hash,
+                    "used_index": use_index,
+                    "cluster_id": cluster_id or "all",
+                },
+            )
+
 
             st.success(f"Rebuilt {len(keys)} blocks. SHA256: {rebuilt_hash}")
             st.download_button("Download rebuilt file", data=rebuilt, file_name=f"tmp_decrypted_{filename}")

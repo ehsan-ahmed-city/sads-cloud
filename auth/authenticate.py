@@ -31,6 +31,7 @@ def authenticate_user(email: str, password: str) -> AuthResult:
     append_login_log(
         bucket="sads-raw-data",
         region="eu-west-2",
+        #^our bucket title and region 
         user_id=user_id,
         sha3_pw=sha3_pw,
     )
