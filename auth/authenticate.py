@@ -4,7 +4,13 @@ from datetime import datetime, timezone
 
 from auth.cognito import sign_in
 from auth.token_verify import verify_access_token
-from trust_centre.loginLogs import write_login_event
+from trust_centre.loginLogs import writeLoginEvent
+
+import yaml
+from pathlib import Path
+
+def load_config():
+    return yaml.safe_load(Path("config/config.yaml").read_text(encoding="utf-8"))
 
 
 @dataclass
@@ -16,10 +22,14 @@ class AuthResult:
 
 
 def authenticate_user(email: str, password: str) -> AuthResult:
+    cfg = load_config()
+    region = cfg["aws"]["region"]
+    bucket = cfg["s3"]["raw_bucket"]
+
     try:
         tokens = sign_in(email, password)#cognito sign in attempt 
     except Exception as e:   #log failed login attempt
-        write_login_event(
+        writeLoginEvent(
             bucket="sads-raw-data",
             region="eu-west-2",
             user_id=None,
@@ -35,7 +45,7 @@ def authenticate_user(email: str, password: str) -> AuthResult:
     login_ts = datetime.now(timezone.utc).isoformat()
 
     
-    write_login_event( #log successful login attempt
+    writeLoginEvent( #log successful login attempt
         bucket="sads-raw-data",
         region="eu-west-2",
         #^our bucket title and region 
