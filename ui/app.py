@@ -1,3 +1,11 @@
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+
 import math
 import json
 import hashlib
@@ -18,7 +26,7 @@ from sklearn.cluster import DBSCAN
 from compression.lzmaCodec import compress_bytes, decompress_bytes
 
 
-from indexing.fractalIndex import build_fit_from_cluster_summary, FitIndex, lookup#indexing renamed file
+from indexing.fractalIndex import buildFitClustSummary, FitIndex, lookup#indexing renamed file
 
 CHUNK_SIZE = 1024 * 1024
 SALSA_KEY = b"0123456789abcdef0123456789abcdef"#dev key like in scripts
