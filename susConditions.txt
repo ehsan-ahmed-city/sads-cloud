@@ -1,0 +1,39 @@
+Suspicious conditions (policy):
+
+High attempt rate 
+- e.g (5 logins in 2 minutes)
+
+Failures then success pattern (brute force)
+- <5 failed logins within 5 minutes
+
+Unusual time-of-day for that user (or globally if no history)
+- 11pm -> 6am
+
+Rapid repeated logins (token abuse / scripted activity)
+- 5 successful logins within 10 minutes
+
+Features to compute (for ML):
+
+hourOfDay (0–23)
+- e.g. sus = 23 -> 06
+
+dayOfWeek (0–6)
+- monday = 0 sunday = 6
+
+success (0/1)
+- boolean
+
+failuresLast10m
+- per user, added when failed login
+
+attemptsLast10m
+- per user, added when attempted login, failed or accepted
+
+
+timeSinceLastLoginSec
+- seconds since last login
+- e.g. 21600 = 6 hours
+
+
+
+Prefer catching suspicious activity even if some false positives happen.
