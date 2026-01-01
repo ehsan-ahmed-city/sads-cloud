@@ -1,0 +1,29 @@
+What counts as suspicious?
+
+Too many login attempts in short time
+
+Logins at unusual hours for that user
+
+Repeated failures followed by success
+
+Rapid repeated logins
+
+Features that indicate this
+
+Time of day
+
+Login success/failure
+
+Frequency
+
+Time since last login
+
+Strictness
+
+Aggressive detection
+
+False positives is more manageable than false negatives
+
+Deliverable:
+
+A login is anomalous if it changes significantly from a user’s login pattern pattern  history in time or frequency. Since in principle the solution would be handling big-data for organisations that could be handling sensitive info like hospitals or banks, it's better to have aggressive detection because a false positive is far less catastrophic than a false positive.
