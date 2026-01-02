@@ -95,7 +95,8 @@ def start_emr_encrypt_job(
     entry = f"s3://{code_bucket}/{code_key}"
 
 
-    spark_params = (    #pass env variables to driver and executors, some only go to executor
+    deps_whl = f"s3://{code_bucket}/emr/deps/pycryptodome-3.20.0-cp35-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+    confs = (
         f"--conf spark.executorEnv.SADS_REGION={region} "
         f"--conf spark.executorEnv.SADS_IN_BUCKET={in_bucket} "
         f"--conf spark.executorEnv.SADS_IN_KEY={in_key} "
@@ -112,6 +113,9 @@ def start_emr_encrypt_job(
         f"--conf spark.emr-serverless.driverEnv.SADS_SALSA_KEY_HEX={salsaKeyHex}"
     )
 
+
+    spark_params = f"--py-files {deps_whl} " + confs#executors can importp ycryptodome
+
     emr = emr_client(region)
 
     resp = emr.start_job_run(
@@ -127,7 +131,6 @@ def start_emr_encrypt_job(
             "monitoringConfiguration": {
 
                 "s3MonitoringConfiguration": {"logUri": f"s3://{out_bucket}/emr-logs/"} # emr logs to s3
-
             }
         },
     )
@@ -344,7 +347,7 @@ with colB:
 
 st.divider()
 
-tabs = st.tabs(["1) Auth", "2) Upload", "3) Cluster", "4) Build Index", "5) Lookup", "6) Retrieve & Verify", "7) EMR Batch encrypt"])
+tabs = st.tabs(["1) Auth", "2) Upload", "3) EMR Batch encryp", "4) Cluster ", "5) Build Index", "6) Lookup", "7) Retrieve and Verify"])
 
 # 1) Auth
 with tabs[0]:
@@ -418,7 +421,7 @@ with tabs[1]:
             st.error(str(e))
 
 # 3) Cluster
-with tabs[2]:#cluster
+with tabs[3]:#cluster
     st.subheader("DBSCAN clustering metadata to clusters.json)")
     if not st.session_state["user_id"]:
         st.warning("Verify token first in the Auth tab.")#prevents access if not logged in
@@ -438,7 +441,7 @@ with tabs[2]:#cluster
             st.error(str(e))
 
 # 4) Build Index
-with tabs[3]:
+with tabs[4]:
     st.subheader("Build FIT index (clusters.json -> index/<user>/fit.json)")
     if not st.session_state["user_id"]:
         st.warning("Verify token first in the Auth tab.")#prevents access if not logged in
@@ -453,8 +456,7 @@ with tabs[3]:
             except Exception as e:
                 st.error(str(e))
 
-# 5) Lookup
-with tabs[4]:
+with tabs[5]:# 5)lookup
     st.subheader("lokup in FIT index")
     if not st.session_state["user_id"]:#prevents access if not logged in
         st.warning("verify token first in the Auth tab")
@@ -469,7 +471,7 @@ with tabs[4]:
         except Exception as e:
             st.error(str(e))
 
-# 6) Retrieve & Verify
+# 6) Retrieve and Verify
 with tabs[5]:
     st.subheader("retreive (indexed) -> decrypt -> decompress -> rebuild -> SHA256 verify")
 
@@ -530,7 +532,7 @@ with tabs[5]:
         except Exception as e:
             st.error(str(e))
 
-with tabs[6]: #emr 
+with tabs[2]: #emr 
     st.subheader("EMR serverless batch job, encrypt/upload in AWS")
 
     st.caption("runs the EMR Serverless job and shows status and where logs in S3 are")
@@ -553,7 +555,27 @@ with tabs[6]: #emr
 
     st.divider()
 
+    st.subheader("Upload RAW file for EMR input")
+
+    raw_up = st.file_uploader("Choose RAW file (EMR enc)", key="raw_uploader")
+
+    if raw_up and st.button("Upload RAW to S3"):
+        if not st.session_state.get("user_id"):
+            st.error("sign in first so we can store under your user id")
+        else:
+            user_id = st.session_state["user_id"]
+            raw_key = f"raw/{user_id}/{raw_up.name}"
+            data = raw_up.read()
+
+            try:
+                upload_bytes(bucket=bucket, key=raw_key, data=data, region=region)
+                st.success("RAW uploaded.")
+                st.code(raw_key)
+            except Exception as e:
+                st.error(str(e))
     
+
+    st.divider()   
     in_bucket = st.text_input("Input bucket", value=bucket)
     in_key = st.text_input("Input key (object in S3)", value="")#existing one in s3 that spark will process
     out_bucket = st.text_input("Output bucket", value=bucket)
