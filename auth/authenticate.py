@@ -30,12 +30,12 @@ def authenticate_user(email: str, password: str) -> AuthResult:
         tokens = sign_in(email, password)#cognito sign in attempt 
     except Exception as e:   #log failed login attempt
         writeLoginEvent(
-            bucket="sads-raw-data",
-            region="eu-west-2",
+            bucket=bucket,
+            region=region,
             user_id=None,
             success=False,
             reason=str(e),
-            extra={"email_hint": email[:3] + "***"},
+            extra={"email_hint": (email[:3] + "***") if email else "***"},
         )
         raise
 
@@ -46,8 +46,8 @@ def authenticate_user(email: str, password: str) -> AuthResult:
 
     
     writeLoginEvent( #log successful login attempt
-        bucket="sads-raw-data",
-        region="eu-west-2",
+        bucket=bucket,
+        region=region,
         #^our bucket title and region 
         user_id=user_id,
         success=True,

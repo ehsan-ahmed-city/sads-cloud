@@ -10,7 +10,7 @@ import math
 import json
 import hashlib
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from auth.token_verify import verify_access_token
 from storage.s3_client import upload_bytes, download_bytes, list_keys
 
@@ -27,9 +27,9 @@ import time
 
 from compression.lzmaCodec import compress_bytes, decompress_bytes
 from auth.authenticate import authenticate_user#added import since it wouldn't give option to sing in for access token
-
-
 from indexing.fractalIndex import buildFitClustSummary, FitIndex, lookup#indexing renamed file
+from trust_centre.loginLogs import writeLoginEvent
+
 
 CHUNK_SIZE = 1024 * 1024
 SALSA_KEY = b"0123456789abcdef0123456789abcdef"#dev key like in scripts just for demo
@@ -347,7 +347,7 @@ with colB:
 
 st.divider()
 
-tabs = st.tabs(["1) Auth", "2) Upload", "3) EMR Batch encryp", "4) Cluster ", "5) Build Index", "6) Lookup", "7) Retrieve and Verify"])
+tabs = st.tabs(["1) Auth", "2) Upload", "3) EMR Batch encryp", "4) Cluster ", "5) Build Index", "6) Lookup", "7) Retrieve and Verify", "8) Trust Centre"])
 
 # 1) Auth
 with tabs[0]:
@@ -379,10 +379,30 @@ with tabs[0]:
                 st.session_state["user_id"] = user["Username"]
 
                 st.success(f"Signed in. User: {st.session_state['user_id']}")
+                writeLoginEvent(#logs sign in
+                    bucket=bucket,
+                    region=region,
+                    user_id=st.session_state["user_id"],
+                    success=True,
+                    reason=None,
+                    extra={"method": "password"},
+                )
+
                 st.code(st.session_state["access_token"])
 
             except Exception as e:
-                st.error(str(e))
+                    st.error(str(e))
+                    writeLoginEvent(
+                        bucket=bucket,
+                        region=region,
+                        user_id=None,
+                        #^user not known yet
+                        success=False,
+                        reason=str(e),
+                        extra={"method": "password", "email_hint": (email[:3] + "***") if email else None},
+                    )
+
+                
 
     else:
         token = st.text_area(
@@ -472,7 +492,7 @@ with tabs[5]:# 5)lookup
             st.error(str(e))
 
 # 6) Retrieve and Verify
-with tabs[5]:
+with tabs[6]:
     st.subheader("retreive (indexed) -> decrypt -> decompress -> rebuild -> SHA256 verify")
 
     filename = st.text_input("Filename to rebuild", value="")
@@ -675,3 +695,90 @@ with tabs[2]: #emr
                     st.code("\n".join(sorted(keys)))
             except Exception as e:
                 st.error(str(e))
+
+with tabs[7]:
+    st.subheader("Trust Centre login monitoring")
+
+    #Guard so user cant access sensitive info without authentication
+    if not st.session_state.get("user_id"):
+        st.warning("Sign in first so we can show your login history")
+        st.stop()#the rest of the tab cant execute
+
+    uid = st.session_state["user_id"]#Cognito id
+
+    #today's and yesterday's logs and show last 25 for this user
+    s3 = boto3.client("s3", region_name=region)
+    now = datetime.now(timezone.utc)
+    prefixes = [
+        f"trust-centre/logins/{now:%Y/%m/%d}/",
+        f"trust-centre/logins/{(now - timedelta(days=1)):%Y/%m/%d}/",
+    ]
+
+    all_events = []
+    for pref in prefixes:
+        #for loop iterates over objects in date prefix
+        resp = s3.list_objects_v2(Bucket=bucket, Prefix=pref)
+        for obj in resp.get("Contents", []):
+            #nested for loop for each lopg file
+            k = obj["Key"]
+            try:
+                b = s3.get_object(Bucket=bucket, Key=k)["Body"].read()
+                e = json.loads(b.decode("utf-8"))
+                #gets log obj from S3 and pareses json log entry
+
+                if e.get("user_id") == uid:
+                    all_events.append(e)
+                    #gets all events for the ucrrent user
+
+            except Exception:
+                pass
+
+    all_events.sort(key=lambda x: x.get("ts_utc", ""), reverse=True)
+    recent = all_events[:25]
+    #sorts events based on timestamp and the 25 most recent ones
+
+    st.write(f"Showing last {len(recent)} login events for **{uid}**")#displays summary
+    st.json(recent)
+
+    st.divider()
+    st.subheader("Demo buttons")
+
+    col1, col2 = st.columns(2)
+
+
+    with col1:
+        """
+        #to simulate multiple failed login attempts
+        # and used to show anomaly detection rules
+        """
+        if st.button("Simulate 5 failed logins quickly"):
+            for i in range(5):
+
+                writeLoginEvent(
+                    bucket=bucket,
+                    region=region,
+                    user_id=uid,
+                    success=False,
+                    reason="demo: simulated failure",
+                    extra={"demo": True, "i": i},
+
+                )
+
+            st.success("wrote 5 failed login events")
+
+    with col2:
+        """
+        to simulate successful login attempt
+        and used to show anomaly detection rules
+        """
+        if st.button("Simulate succesful login now"):
+
+            writeLoginEvent(
+                bucket=bucket,
+                region=region,
+                user_id=uid,
+                success=True,
+                reason=None,
+                extra={"demo": True},
+            )
+            st.success("logged successful login event")
