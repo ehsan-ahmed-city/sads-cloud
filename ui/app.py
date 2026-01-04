@@ -477,7 +477,7 @@ with tabs[4]:
                 st.error(str(e))
 
 with tabs[5]:# 5)lookup
-    st.subheader("lokup in FIT index")
+    st.subheader("lookup in FIT index")
     if not st.session_state["user_id"]:#prevents access if not logged in
         st.warning("verify token first in the Auth tab")
     filename = st.text_input("Filename", value="")

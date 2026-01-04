@@ -24,6 +24,7 @@ def main():
 
     mode = input("Auth mode (token/password): ").strip().lower()
 
+    #Token or email choice for auth
     if mode == "token":
         access_token = input("Paste Cognito ACCESS token: ").strip().split()[0]
         user = verify_access_token(access_token)  # raises if invalid
@@ -68,9 +69,10 @@ def main():
     # keys = sorted(keys)#keys sorted after loop
 
     use_index = input("Use index? (y/n): ").strip().lower() == "y"
+    #either use fractal index tree or raw s3 listing
 
     if use_index:
-        fit_key = f"index/{user_id}/fit.json"
+        fit_key = f"index/{user_id}/fit.json" #loads the fractal index tree for fast lookup
         fit_raw = download_bytes(bucket, fit_key, region)
         fit = json.loads(fit_raw.decode("utf-8"))
 
@@ -82,6 +84,7 @@ def main():
         if cluster_id:
             keys = clusters.get(cluster_id, [])
         else:
+            #else all cluster block keys merged for full reconstruction
             for cid, ks in clusters.items():
                 keys.extend(ks)
 
@@ -97,8 +100,10 @@ def main():
                 kwargs["ContinuationToken"] = token
             resp = s3.list_objects_v2(**kwargs)
             keys.extend(
+
                 o["Key"] for o in resp.get("Contents", [])
                 if o["Key"].rsplit("/", 1)[-1].startswith("block_") and not o["Key"].endswith(".meta.json")
+                #if any issue with fit, the fallback is scanning S3 directly for encrypted blocks
             )
             if resp.get("IsTruncated"):
                 token = resp.get("NextContinuationToken")
@@ -106,12 +111,12 @@ def main():
                 break
         keys = sorted(keys)
 
-    if not keys:
+    if not keys:#nothing rebuilt if no blocks, for security
         if use_index:
             raise RuntimeError("No blocks found in index for given filename/cluster_id")
         raise RuntimeError(f"No blocks found under {prefix}")
 
-    out_path = Path("tmp_decrypted_" + filename)
+    out_path = Path("decrypted_" + filename)
     out_path.write_bytes(b"")
 
     for key in keys:

@@ -44,7 +44,7 @@ def list_keys(bucket: str, prefix: str, region: str) -> list[str]:
 
     #S3 list_objects_v2 returns at most 1000 keys per request
     while True:
-        #Build request parameters dynamically
+        #loads parameters dynamically
         kwargs = {
             "Bucket": bucket,
             "Prefix": prefix #limits results to a logical "folder"
@@ -56,8 +56,8 @@ def list_keys(bucket: str, prefix: str, region: str) -> list[str]:
 
         resp = client.list_objects_v2(**kwargs)
 
-        #default to an empty list to avoid Keyerror if no objects match the prefix
         for item in resp.get("Contents", []):
+                    # for loop defaults to an empty list to avoid Keyerror if no objects match the prefix
             keys.append(item["Key"]) #only need the object key
 
         #if Istruncated true, more results to fetch

@@ -189,21 +189,22 @@ The function: reads newly created login log objects from S3
 - If the login marked as suspicious, publishes an alert message to AWS SNS
 - If the login is normal, nothing else happens
 
-The screenshot demonstrates:
+The screenshot shows:
 - The Lambda function deployed and active in AWS
 - Integration with S3 as an event source
 - The serverless nature of the alerting pipeline (no persistent infrastructure)
 
 **Why Lambda is used:**
-Lambda allows suspicious login alerts to be handled **asynchronously and automatically**, without
+Lambda allows suspicious login alerts to be handled asynchronously and automatically, without
 adding latency to the authentication flow. This matches the project’s trust model, where monitoring
 and enforcement are decoupled from user-facing operations.
 
 **Security and design properties:**
-- The function runs under a **least-privilege IAM role**
+- The function runs under a least privilege IAM role
 - It has read-only access to login logs
-- It cannot modify data or access encrypted user content
-- Alert delivery is handled via SNS, ensuring reliability and auditability
+
+- It can't modify data or access encrypted user content
+- Alert delivery is handled via SNS to the Data Owner, ensuring reliability and logging for each user
 
 This Lambda-based design demonstrates a realistic cloud security pattern used in production systems,
 where detection, alerting, and response are implemented as independent serverless components.
@@ -219,7 +220,54 @@ This ncludes:
 - Cost-aware indexing and retrieval, saves time and resources
 - End-to-end system with audit logging
 
-Supporting research documents are included separately.
+## Mapping to project proposal
+
+Proposal concept and the implementation
+
+User authentication & trust is implemented through AWS Cognito and Trust Centre 
+Immutable audit logs was implemented with append-only S3 login logs
+Anomaly detection was implemented with rule-based behaviour analysis
+
+Secure outsourcing was implemented through client-side encryption before cloud storage
+Encrypted data management  Metadata-only clustering & indexing
+
+Trust enforcement was created through Lambda and SNS alerts
+
+
+
+
+## Design Decisions and Limitations
+
+### EMR Serverless
+EMR Serverless was explored to evaluate whether encryption and storage
+operations could be offloaded to a scalable big-data env.
+
+While job submission, logging and RAW file upload were added successfully, execution was limited by native dependency
+constraints ( Linux/Ubuntu-specific crypto that'd cause issues with the device)
+
+Rather than introducing insecure workarounds or unmanaged clusters, this limitation was documented and the design kept secure
+client side encryption ast he primary approach
+
+## SageMaker consideration and design Decision
+
+Amazon Sagemaker was initially considered in the project proposal as a
+potential platform for ml-based anomaly detection on login behaviour but
+during implementation, this was **not included** for a few reasons:
+
+- The project operates on a limited and controlled dataset, making
+  rule-based detection more appropriate
+- The suspicious login logic is explainable, auditable and aligns with the trust model described in the research
+- Using SageMaker would introduce unnecessary cost and operational complexity without improving detection quality for this use case as students
+- Since the research focus emphaisses on trust enforcement and auditability rather than ML decision-making, it wasn't high priority during development
+
+Instead, the system implements feature extraction and behavioural rules
+(time-of-day, frequency,failures, time since last login), which can be directly extended to ML models in future work
+
+It was a practical trade-off between scalability, how we can interpret it and system complexity.
+
+
+### No Docker/Kubrenetes
+Containers was excluded to keep the focus on security, trust modelling, auditability, cloud-native managed services
 
 
 
@@ -232,7 +280,47 @@ The project demo vid includes a Streamlit console that showed:
 - secure retrieval and integrity verification
 - monitoring of cloud-side artefacts in S3
 
+## How to Run it
+
+This project is demonstrated through a Streamlit-based web app
+
+### Prereqs
+- Python 3.12+ (we used 3.12.4)
+- AWS credentials configured and access to the configured AWS services (like IAM, Cognito, S3 and Lambda)
+
+### Running the app
+```bash
+pip install -r requirements.txt
+streamlit run ui/app.py
+
+
+---
+
+
+## Repository Structure
+
+- `auth/` — Cognito authentication, token verification and login handling
+- `trust_centre/` — Login logging, suspicious behaviour detection logic
+
+- `encryption/` — SALSA20 encryption logic
+- `compression/` — LZMA compression 
+- `storage/` — S3 client (what we used for storage)
+
+- `clustering/` — DBSCAN clustering of encrypted metdata
+- `indexing/` — Fractal index tree for efficient lookup
+
+- `lambda/` — AWS Lambda code for suspicious login alerts
+
+- `emr/` — EMR Serverless batch encryption attempt
+
+- `ui/` — The streamlit demo appl
+
+- `awsScreenshots/` — Screenshots of deployed AWS resources that may have not been visible in demo
+
+
 ## Contributors
+
+Equal contribution
 
 - **Asad Arshad** — Authentication, Trust Centre, anomaly detection and  AWS Lambda, alerting 
 - **Ehsan Ahmed** — AWS user setup in cognito, AWS IAM, Encryption, compression, cloud operations integrating, UI integration  
