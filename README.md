@@ -133,7 +133,7 @@ Security properties provided:
 - Allows auditability and anomaly detection and users can be identified
 
 **Reason used:**  
-Cognito allows identity management to be handled by a managed cloud service, separating authentication concerns from data processing logic. This aligns with the project’s trust model and enables a realistic, secure cloud-based demonstration without implementing a custom authentication system.
+Cognito allows identity management to be handled by a managed cloud service separating authentication concerns from data processing logic from the app or S3. This aligns with the project’s trust model and enables a realistic, secure cloud-based demo without implementing a custom authentication system.
 
 
 ### IAM Design choice
@@ -159,25 +159,7 @@ Cost and resource usage are minimised by:
 
 ---
 
-### EMR serverless big-data encryption attempt
-awsScreenshots/emrDefunc.png
-
-So from the proposal, the project explored whether encryption and storage operations could be offloaded to support large-scale workloads
-
-To develop this, we created an EMR serverless Spark app to accept RAW file inputs S3, perform batch-style encryption and then write encrypted outputs back to S3
-which is then logged.
-
-The EMR workflow successfully supports job submission, scheduling, logging, and RAW file upload, as shown in the one of the screenshots(`awsScreenshots/emrDefunc.png`).
-
-However, during execution, the job encounters limitations due to native linux/Ubuntu dependency constraints within the EMR. This prevented certain libs from loading correctly without unmanaged clusters
-
-Rather than introducing insecure or non-portable workarounds, this limitation was documented in a commit and the system retains a **secure client-side encryption pipeline** as the primary function of what we based our solution from our research paper.
-
-**Result:**  
-EMR Serverless was used to evaluate scalability, cost and feasibility of big-data encryption rather than as a mandatory way of execution but the results showed the final design decisions and sticking to the principle of waht was in the paper
-
-
-### AWS Lambda forlogin alert
+### AWS Lambda for login alert
 
 The screenshot `awsScreenshots/lambda-suspicious-login.png` shows the deployed AWS Lambda function which implements the serverless alerting component of the trust centre
 
@@ -234,7 +216,7 @@ Encrypted data management  Metadata-only clustering & indexing
 Trust enforcement was created through Lambda and SNS alerts
 
 
-
+---
 
 ## Design Decisions and Limitations
 
@@ -243,16 +225,17 @@ EMR Serverless was explored to evaluate whether encryption and storage
 operations could be offloaded to a scalable big-data env.
 
 While job submission, logging and RAW file upload were added successfully, execution was limited by native dependency
-constraints ( Linux/Ubuntu-specific crypto that'd cause issues with the device)
+constraints (during execution the job encounters limitations due to native linux/Ubuntu dependencies within EMR. this prevented certain libs from loading correctly without unmanaged clusters) The EMR workflow successfully supports job submission, scheduling, logging, and RAW file upload, as shown in the one of the screenshots(`awsScreenshots/emrDefunc.png`).
 
-Rather than introducing insecure workarounds or unmanaged clusters, this limitation was documented and the design kept secure
-client side encryption ast he primary approach
+Rather than introducing insecure workarounds or unmanaged clusters,
+Rather than introducing insecure or non-portable workarounds, this limitation was documented and the design kept secure
+client-side encryption as the main approach of what we based our solution from our research paper
 
 ## SageMaker consideration and design Decision
 
 Amazon Sagemaker was initially considered in the project proposal as a
 potential platform for ml-based anomaly detection on login behaviour but
-during implementation, this was **not included** for a few reasons:
+during implementation, this was not included for a few reasons:
 
 - The project operates on a limited and controlled dataset, making
   rule-based detection more appropriate
