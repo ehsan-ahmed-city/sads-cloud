@@ -21,14 +21,18 @@ def load_config():
         return yaml.safe_load(f)
 
 def main():
-    print("== upload_file starting ==")
+    print("upload_file starting")
 
     cfg = load_config()
     region = cfg["aws"]["region"]
     raw_bucket = cfg["s3"]["raw_bucket"]
     print("Bucket:", raw_bucket, "| Region:", region)
+     #^loads aws cofing
 
     mode = input("Auth mode (token/password): ").strip().lower()
+    # Choosing auth method:
+    # 1 token: fast path if already logged in
+    # 2 password: full trust centre login + audit logging
 
     if mode == "token":
         access_token = input("Paste Cognito ACCESS token: ").strip().split()[0]
@@ -36,6 +40,7 @@ def main():
         user_id = user["Username"]
         print("Token OK for user:", user_id)
     else:
+        #Full auth flow with email/pwd
         email = input("Email: ").strip()
         password = getpass("Password (hidden): ")
         auth = authenticate_user(email, password)  #login + trustcentre log
@@ -46,6 +51,7 @@ def main():
     file_path = input("Path to file: ").strip()
     p = Path(file_path)
     print("Resolved path:", p.resolve())
+    #^validating input file
 
     if not p.exists():
         raise FileNotFoundError(f"File not found: {p.resolve()}")
@@ -78,10 +84,12 @@ def main():
         enc_s3_key = f"encrypted/{user_id}/{p.name}/block_{i:05d}"
 
         try:
+            #uploads encrypted block to S3
             upload_bytes(raw_bucket, enc_s3_key, payload, region)
             print("Uploaded", enc_s3_key, f"({len(payload)} bytes)")#meta data upload terminl
 
             append_access_log(
+                #upload logged to Trust Centre audit
                 bucket=raw_bucket,
                 region=region,
                 user_id=user_id,
@@ -92,6 +100,7 @@ def main():
             )
 
         except Exception as e:
+             #log failed upload attempt
             append_access_log(
                 bucket=raw_bucket,
                 region=region,
@@ -103,7 +112,8 @@ def main():
                 extra={"filename": p.name, "chunk_index": i},
             )
             raise
-        meta = {
+
+        meta = {        #The metadata of a block whihch is used for clustering,indexing and retrieval
             "block_id": f"block_{i:05d}",
             "owner": user_id,
             "filename": p.name,
@@ -123,6 +133,7 @@ def main():
         meta_key = enc_s3_key + ".meta.json"
         try:
             upload_bytes(raw_bucket, meta_key, json.dumps(meta).encode("utf-8"), region, content_type="application/json")
+            #upload metadata with encrypted block
             print("Uploaded", meta_key)
 
             append_access_log(
